@@ -1,6 +1,3 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
 generator client {
   provider = "prisma-client-js"
 }
@@ -10,22 +7,25 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-enum UserRole {
+enum Role {
   ADMIN
   TEACHER
   STUDENT
   PARENT
 }
 
-enum LessonType {
-  PRIVATE
-  GROUP
+enum LessonStatus {
+  SCHEDULED
+  COMPLETED
+  CANCELLED
+  RESCHEDULED
 }
 
-enum ScheduleStatus {
-  SCHEDULED
-  CANCELLED
-  COMPLETED
+enum LessonType {
+  INDIVIDUAL
+  GROUP
+  WORKSHOP
+  MASTERCLASS
 }
 
 enum AttendanceStatus {
@@ -33,317 +33,271 @@ enum AttendanceStatus {
   ABSENT
   LATE
   EXCUSED
-}
-
-enum PaymentStatus {
   PENDING
-  PAID
-  FAILED
-  REFUNDED
-}
-
-enum InvoiceStatus {
-  DRAFT
-  SENT
-  PAID
-  OVERDUE
-  CANCELLED
 }
 
 enum ResourceType {
   SHEET_MUSIC
-  VIDEO
   AUDIO
+  VIDEO
   DOCUMENT
+  LINK
+  IMAGE
+  OTHER
+}
+
+enum AssignmentStatus {
+  PENDING
+  SUBMITTED
+  COMPLETED
+  LATE
+  GRADED
+}
+
+enum PaymentStatus {
+  PENDING
+  COMPLETED
+  FAILED
+  REFUNDED
+}
+
+enum NotificationType {
+  LESSON_REMINDER
+  ASSIGNMENT
+  PAYMENT
+  MESSAGE
+  SYSTEM
   OTHER
 }
 
 model User {
-  id                String    @id @default(uuid())
-  email             String    @unique
-  passwordHash      String
-  role              UserRole
-  firstName         String
-  lastName          String
-  phone             String?
-  profileImageUrl   String?
-  createdAt         DateTime  @default(now())
-  updatedAt         DateTime  @updatedAt
+  id             String    @id @default(uuid())
+  email          String    @unique
+  password       String
+  firstName      String
+  lastName       String
+  role           Role      @default(STUDENT)
+  phone          String?
+  profileImageUrl String?
+  resetPasswordToken String? 
+  resetPasswordExpires DateTime?
+  emailVerified  Boolean   @default(false)
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
 
-  // Relationships
-  profile           Profile?
-  teacherProfile    TeacherProfile?
-  studentProfile    StudentProfile?
-  parentStudents    StudentProfile[] @relation("ParentToStudent")
-  taughtLessons     Lesson[]         @relation("TeacherLessons")
-  attendances       Attendance[]
-  practiceLogs      PracticeLog[]
-  createdResources  Resource[]
-  payments          Payment[]
-  invoices          Invoice[]
-  sentMessages      Message[]        @relation("MessageSender")
-  receivedMessages  Message[]        @relation("MessageRecipient")
-  notifications     Notification[]
+  // Relations
+  profile        Profile?
+  teacherProfile TeacherProfile?
+  studentProfile StudentProfile?
+  parentProfiles ParentProfile?
+  teacherLessons Lesson[]  @relation("TeacherLessons")
+  studentLessons LessonStudent[] @relation("StudentLessons")
+  resources      Resource[] @relation("CreatedResources")
+  notifications  Notification[] @relation("UserNotifications")
+  assignments    Assignment[] @relation("AssignedToUser")
+  createdAssignments Assignment[] @relation("CreatedByUser")
+  payments       Payment[] @relation("UserPayments")
+  sentMessages   Message[] @relation("SentMessages")
+  receivedMessages Message[] @relation("ReceivedMessages")
 }
 
 model Profile {
-  id                    String    @id @default(uuid())
-  userId                String    @unique
-  bio                   String?   @db.Text
-  preferences           Json?
-  notificationSettings  Json?
-  
-  // Relationships
-  user                  User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id         String   @id @default(uuid())
+  userId     String   @unique
+  bio        String?  @db.Text
+  preferences Json?
+  notificationSettings Json?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  // Relations
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
 model TeacherProfile {
-  id                String    @id @default(uuid())
-  userId            String    @unique
-  specializations   String[]
-  qualifications    String?   @db.Text
-  hourlyRate        Decimal   @db.Decimal(10, 2)
-  availability      Json?
-  bio               String?   @db.Text
-  profileImageUrl   String?
-  
-  // Relationships
-  user              User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id              String   @id @default(uuid())
+  userId          String   @unique
+  specializations String[] 
+  qualifications  String?  @db.Text
+  hourlyRate      Decimal  @default(0) @db.Decimal(10, 2)
+  availability    Json?
+  bio             String?  @db.Text
+  yearsExperience Int?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  // Relations
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
 model StudentProfile {
-  id                  String    @id @default(uuid())
-  userId              String    @unique
-  age                 Int?
-  skillLevel          String?
-  primaryInstrument   String?
+  id                   String   @id @default(uuid())
+  userId               String   @unique
+  age                  Int?
+  skillLevel           String?
+  primaryInstrument    String?
   secondaryInstruments String[]
-  learningGoals       String?   @db.Text
-  parentUserId        String?
-  
-  // Relationships
-  user                User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  parent              User?     @relation("ParentToStudent", fields: [parentUserId], references: [id])
-  enrollments         Enrollment[]
-  practiceLogs        PracticeLog[]
+  learningGoals        String?  @db.Text
+  parentUserId         String?
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  // Relations
+  user                 User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  parent               ParentProfile? @relation(fields: [parentUserId], references: [userId], onDelete: SetNull)
 }
 
-model Location {
-  id            String    @id @default(uuid())
-  name          String
-  address       String?
-  city          String?
-  state         String?
-  zip           String?
-  country       String?
-  isVirtual     Boolean   @default(false)
-  createdAt     DateTime  @default(now())
-  
-  // Relationships
-  rooms         Room[]
-}
+model ParentProfile {
+  id               String   @id @default(uuid())
+  userId           String   @unique
+  relationship     String?
+  emergencyContact String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
 
-model Room {
-  id            String    @id @default(uuid())
-  locationId    String
-  name          String
-  capacity      Int?
-  description   String?   @db.Text
-  equipment     Json?
-  
-  // Relationships
-  location      Location  @relation(fields: [locationId], references: [id], onDelete: Cascade)
-  schedules     LessonSchedule[]
+  // Relations
+  user             User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  students         StudentProfile[]
 }
 
 model Lesson {
-  id                String        @id @default(uuid())
-  teacherId         String
-  lessonType        LessonType
-  title             String
-  description       String?       @db.Text
-  durationMinutes   Int
-  recurringPattern  Json?
-  maxStudents       Int?
-  price             Decimal       @db.Decimal(10, 2)
-  isActive          Boolean       @default(true)
-  
-  // Relationships
-  teacher           User          @relation("TeacherLessons", fields: [teacherId], references: [id])
-  schedules         LessonSchedule[]
-  enrollments       Enrollment[]
-  resources         LessonResource[]
-  invoiceItems      InvoiceItem[]
+  id          String   @id @default(uuid())
+  title       String
+  description String?  @db.Text
+  startTime   DateTime
+  endTime     DateTime
+  location    String?
+  status      LessonStatus @default(SCHEDULED)
+  notes       String?  @db.Text
+  teacherId   String
+  lessonType  LessonType @default(INDIVIDUAL)
+  recurrence  Json?
+  color       String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relations
+  teacher     User     @relation("TeacherLessons", fields: [teacherId], references: [id], onDelete: Cascade)
+  students    LessonStudent[]
+  resources   LessonResource[]
+  assignments Assignment[]
+  payments    Payment[]
 }
 
-model LessonSchedule {
-  id            String          @id @default(uuid())
-  lessonId      String
-  startTime     DateTime
-  endTime       DateTime
-  roomId        String?
-  status        ScheduleStatus  @default(SCHEDULED)
-  notes         String?         @db.Text
-  createdAt     DateTime        @default(now())
-  updatedAt     DateTime        @updatedAt
-  
-  // Relationships
-  lesson        Lesson          @relation(fields: [lessonId], references: [id], onDelete: Cascade)
-  room          Room?           @relation(fields: [roomId], references: [id])
-  instances     LessonInstance[]
-}
+model LessonStudent {
+  id           String   @id @default(uuid())
+  lessonId     String
+  studentId    String
+  attendance   AttendanceStatus @default(PENDING)
+  notes        String?  @db.Text
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
 
-model Enrollment {
-  id              String        @id @default(uuid())
-  studentId       String
-  lessonId        String
-  enrollmentDate  DateTime      @default(now())
-  status          String        @default("active")
-  paymentStatus   String        @default("pending")
-  
-  // Relationships
-  student         StudentProfile @relation(fields: [studentId], references: [id])
-  lesson          Lesson        @relation(fields: [lessonId], references: [id], onDelete: Cascade)
-}
+  // Relations
+  lesson       Lesson   @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+  student      User     @relation("StudentLessons", fields: [studentId], references: [id], onDelete: Cascade)
 
-model LessonInstance {
-  id                String      @id @default(uuid())
-  scheduleId        String
-  actualStartTime   DateTime?
-  actualEndTime     DateTime?
-  status            String      @default("scheduled")
-  notes             String?     @db.Text
-  
-  // Relationships
-  schedule          LessonSchedule @relation(fields: [scheduleId], references: [id], onDelete: Cascade)
-  attendances       Attendance[]
-}
-
-model Attendance {
-  id                String            @id @default(uuid())
-  instanceId        String
-  studentId         String
-  status            AttendanceStatus
-  notes             String?           @db.Text
-  
-  // Relationships
-  instance          LessonInstance    @relation(fields: [instanceId], references: [id], onDelete: Cascade)
-  student           User              @relation(fields: [studentId], references: [id])
-}
-
-model PracticeLog {
-  id                String      @id @default(uuid())
-  studentId         String
-  studentProfileId  String
-  date              DateTime
-  durationMinutes   Int
-  description       String?     @db.Text
-  teacherFeedback   String?     @db.Text
-  createdAt         DateTime    @default(now())
-  
-  // Relationships
-  student           User            @relation(fields: [studentId], references: [id])
-  studentProfile    StudentProfile  @relation(fields: [studentProfileId], references: [id])
+  @@unique([lessonId, studentId])
 }
 
 model Resource {
-  id            String        @id @default(uuid())
-  title         String
-  description   String?       @db.Text
-  type          ResourceType
-  url           String?
-  filePath      String?
-  createdById   String
-  createdAt     DateTime      @default(now())
-  
-  // Relationships
-  createdBy     User          @relation(fields: [createdById], references: [id])
-  lessons       LessonResource[]
+  id          String   @id @default(uuid())
+  title       String
+  description String?  @db.Text
+  fileUrl     String?
+  fileType    String?
+  contentType ResourceType
+  createdById String
+  isPublic    Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relations
+  createdBy   User     @relation("CreatedResources", fields: [createdById], references: [id], onDelete: Cascade)
+  lessons     LessonResource[]
+  assignments Assignment[]
 }
 
 model LessonResource {
-  id            String      @id @default(uuid())
-  lessonId      String
-  resourceId    String
-  assignedDate  DateTime    @default(now())
-  
-  // Relationships
-  lesson        Lesson      @relation(fields: [lessonId], references: [id], onDelete: Cascade)
-  resource      Resource    @relation(fields: [resourceId], references: [id], onDelete: Cascade)
+  id          String   @id @default(uuid())
+  lessonId    String
+  resourceId  String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relations
+  lesson      Lesson   @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+  resource    Resource @relation(fields: [resourceId], references: [id], onDelete: Cascade)
 
   @@unique([lessonId, resourceId])
 }
 
-model Payment {
-  id                  String          @id @default(uuid())
-  studentId           String
-  amount              Decimal         @db.Decimal(10, 2)
-  paymentDate         DateTime
-  paymentMethod       String
-  status              PaymentStatus
-  invoiceId           String?
-  transactionReference String?
-  
-  // Relationships
-  student             User            @relation(fields: [studentId], references: [id])
-  invoice             Invoice?        @relation(fields: [invoiceId], references: [id])
-}
-
-model Invoice {
-  id            String          @id @default(uuid())
-  studentId     String
-  issueDate     DateTime        @default(now())
-  dueDate       DateTime
-  totalAmount   Decimal         @db.Decimal(10, 2)
-  status        InvoiceStatus   @default(DRAFT)
-  notes         String?         @db.Text
-  
-  // Relationships
-  student       User            @relation(fields: [studentId], references: [id])
-  items         InvoiceItem[]
-  payments      Payment[]
-}
-
-model InvoiceItem {
+model Assignment {
   id            String    @id @default(uuid())
-  invoiceId     String
+  title         String
+  description   String?   @db.Text
+  dueDate       DateTime?
+  status        AssignmentStatus @default(PENDING)
   lessonId      String?
-  description   String
-  quantity      Int
-  unitPrice     Decimal   @db.Decimal(10, 2)
-  totalPrice    Decimal   @db.Decimal(10, 2)
-  
-  // Relationships
-  invoice       Invoice   @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
-  lesson        Lesson?   @relation(fields: [lessonId], references: [id])
+  resourceId    String?
+  assignedToId  String
+  createdById   String
+  feedback      String?   @db.Text
+  submissionUrl String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  // Relations
+  lesson        Lesson?   @relation(fields: [lessonId], references: [id], onDelete: SetNull)
+  resource      Resource? @relation(fields: [resourceId], references: [id], onDelete: SetNull)
+  assignedTo    User      @relation("AssignedToUser", fields: [assignedToId], references: [id], onDelete: Cascade)
+  createdBy     User      @relation("CreatedByUser", fields: [createdById], references: [id], onDelete: Cascade)
 }
 
-model Message {
-  id                String    @id @default(uuid())
-  senderId          String
-  recipientId       String
-  content           String    @db.Text
-  sentAt            DateTime  @default(now())
-  readAt            DateTime?
-  parentMessageId   String?
-  
-  // Relationships
-  sender            User      @relation("MessageSender", fields: [senderId], references: [id])
-  recipient         User      @relation("MessageRecipient", fields: [recipientId], references: [id])
-  parentMessage     Message?  @relation("MessageThread", fields: [parentMessageId], references: [id])
-  replies           Message[] @relation("MessageThread")
+model Payment {
+  id              String   @id @default(uuid())
+  amount          Decimal  @db.Decimal(10, 2)
+  currency        String   @default("USD")
+  status          PaymentStatus @default(PENDING)
+  paymentMethod   String?
+  transactionId   String?
+  userId          String
+  lessonId        String?
+  description     String?  
+  paymentDate     DateTime?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  // Relations
+  user            User     @relation("UserPayments", fields: [userId], references: [id], onDelete: Cascade)
+  lesson          Lesson?  @relation(fields: [lessonId], references: [id], onDelete: SetNull)
 }
 
 model Notification {
-  id                String    @id @default(uuid())
-  userId            String
-  type              String
-  content           String    @db.Text
-  createdAt         DateTime  @default(now())
-  readAt            DateTime?
-  relatedEntityType String?
-  relatedEntityId   String?
-  
-  // Relationships
-  user              User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id          String   @id @default(uuid())
+  userId      String
+  title       String
+  content     String?  @db.Text
+  type        NotificationType
+  isRead      Boolean  @default(false)
+  referenceId String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relations
+  user        User     @relation("UserNotifications", fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Message {
+  id          String   @id @default(uuid())
+  senderId    String
+  receiverId  String
+  content     String   @db.Text
+  isRead      Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relations
+  sender      User     @relation("SentMessages", fields: [senderId], references: [id], onDelete: Cascade)
+  receiver    User     @relation("ReceivedMessages", fields: [receiverId], references: [id], onDelete: Cascade)
 }
